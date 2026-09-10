@@ -16,7 +16,7 @@ import {
   Activity,
 } from "lucide-react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://orca-marine-ecosystem-intelligence-1.onrender.com";
 
 export default function AskORCA() {
   const [query, setQuery] = useState("");
@@ -197,7 +197,7 @@ export default function AskORCA() {
         {
           type: "error",
           text:
-            "ORCA could not process this request. Please make sure the FastAPI backend is running on port 8000.",
+            "ORCA could not process this request. Please make sure the FastAPI backend is running on the ORCA backend.",
         },
       ]);
     } finally {

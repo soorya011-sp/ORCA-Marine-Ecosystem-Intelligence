@@ -36,7 +36,7 @@ import {
 
 import "leaflet/dist/leaflet.css";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://orca-marine-ecosystem-intelligence-1.onrender.com";
 
 const DEFAULT_LAT = 9.5;
 const DEFAULT_LON = 76;
@@ -743,7 +743,7 @@ function AskORCA() {
       console.error(err);
 
       setError(
-        "ORCA could not process the request. Check that the FastAPI backend is running on port 8000 and that the requested date has available data."
+        "ORCA could not process the request. Check that the FastAPI backend is running on the ORCA backend and that the requested date has available data."
       );
 
     } finally {
@@ -1410,7 +1410,7 @@ function WeatherPage() {
       console.error(err);
 
       setError(
-        "Weather analysis could not be loaded. Check that the FastAPI backend is running on port 8000."
+        "Weather analysis could not be loaded. Check that the FastAPI backend is running on the ORCA backend."
       );
 
     } finally {
@@ -1785,7 +1785,7 @@ function SafeRoute() {
       console.error(err);
 
       setError(
-        "Safe Route analysis failed. Make sure the FastAPI backend is running on port 8000 and the /route-analysis endpoint is available."
+        "Safe Route analysis failed. Make sure the FastAPI backend is running on the ORCA backend and the /route-analysis endpoint is available."
       );
 
     } finally {
@@ -2563,7 +2563,7 @@ function AlertsPage() {
       console.error("Alerts error:", err);
 
       setError(
-        "Marine alert analysis failed. Check that the FastAPI backend is running on port 8000 and the /alerts endpoint is available."
+        "Marine alert analysis failed. Check that the FastAPI backend is running on the ORCA backend and the /alerts endpoint is available."
       );
 
     } finally {
