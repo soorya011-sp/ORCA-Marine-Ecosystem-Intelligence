@@ -192,4 +192,4 @@ npm run dev
 * **Team:** HashBoom
 * **Hackathon:** Smart India Hackathon (SIH) 2026
 * **Problem Statement ID:** SIH26176
-* **Category:** Software / Space Technology
+* **Category:** Space Technology
