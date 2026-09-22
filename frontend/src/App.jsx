@@ -36,7 +36,7 @@ import {
 
 import "leaflet/dist/leaflet.css";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://orca-backend-mnm8.onrender.com";
 
 const DEFAULT_LAT = 9.5;
 const DEFAULT_LON = 76;
