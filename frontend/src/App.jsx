@@ -36,7 +36,7 @@ import {
 
 import "leaflet/dist/leaflet.css";
 
-const API = "https://orca-marine-ecosystem-intelligence-1.onrender.com";
+const API = "http://127.0.0.1:8000";
 
 const DEFAULT_LAT = 9.5;
 const DEFAULT_LON = 76;
@@ -743,7 +743,7 @@ function AskORCA() {
       console.error(err);
 
       setError(
-        "ORCA could not process the request. Check that the FastAPI backend is running on the ORCA backend and that the requested date has available data."
+        "ORCA could not process the request. Check that the FastAPI backend is running on port 8000 and that the requested date has available data."
       );
 
     } finally {
@@ -1240,6 +1240,56 @@ function PFZAnalysis() {
 
         </div>
 
+        {/* INCOIS BASELINE VS ORCA AUGMENTATION */}
+        <div className="grid grid-cols-1 gap-4 border-b border-slate-800 p-5 md:grid-cols-2">
+
+          <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Official INCOIS PFZ Baseline
+              </span>
+              <span className="rounded bg-blue-500/20 px-2 py-0.5 font-mono text-xs font-semibold text-blue-400">
+                INCOIS PFZ
+              </span>
+            </div>
+            <p className="text-sm font-medium text-slate-200">
+              Sector: Kerala / Kochi Offshore (9.5°N, 76.0°E)
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Status: Active Potential Fishing Zone (PFZ) baseline
+            </p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              ORCA uses this advisory as a baseline and adds species, environmental, safety and evidence context.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                ORCA Explainable Augmentation
+              </span>
+              <span className="rounded bg-cyan-500/20 px-2 py-0.5 font-mono text-xs font-bold text-cyan-300">
+                Augmented Layer
+              </span>
+            </div>
+            <p className="text-sm font-medium text-slate-200">
+              Advisory: Consider a deeper sector (sardine thermal-stress signal)
+            </p>
+            <div className="mt-2 space-y-1 text-xs leading-5">
+              <p className="text-slate-300">
+                • <strong className="text-cyan-400">Biological Suitability:</strong> SST 31.85°C is above the 26–29°C range reported for Indian oil sardine aggregation conditions in the reference study.
+              </p>
+              <p className="text-slate-300">
+                • <strong className="text-emerald-400">Vessel Safety Context:</strong> Wave height 1.2 m is evaluated against the selected vessel-class threshold in Safe Route.
+              </p>
+              <p className="text-slate-300">
+                • <strong className="text-amber-400">Epistemic Confidence:</strong> 56% prototype assessment confidence with limited environmental indicators.
+              </p>
+            </div>
+          </div>
+
+        </div>
+
         <div className="h-[520px]">
 
           <MapContainer
@@ -1410,7 +1460,7 @@ function WeatherPage() {
       console.error(err);
 
       setError(
-        "Weather analysis could not be loaded. Check that the FastAPI backend is running on the ORCA backend."
+        "Weather analysis could not be loaded. Check that the FastAPI backend is running on port 8000."
       );
 
     } finally {
@@ -1423,34 +1473,74 @@ function WeatherPage() {
 
   const source =
     weather?.weather ||
+    weather?.data?.weather ||
+    weather?.data ||
     weather ||
     {};
 
+  const analysis =
+    weather?.analysis ||
+    weather?.weather_analysis ||
+    weather?.route_analysis ||
+    weather?.data?.analysis ||
+    {};
+
+  const marineConditions =
+    analysis?.marine_conditions ||
+    weather?.marine_conditions ||
+    {};
+
+  const safetyData =
+    analysis?.safety ||
+    weather?.safety ||
+    {};
+
   const windSpeed =
-    source.wind_speed ??
-    source.windSpeed ??
+    source?.wind_speed ??
+    source?.windSpeed ??
+    marineConditions?.wind_speed ??
+    analysis?.wind_speed ??
     null;
 
   const rainfall =
-    source.rainfall ??
-    source.precipitation ??
+    source?.rainfall ??
+    source?.precipitation ??
+    marineConditions?.rainfall ??
+    analysis?.rainfall ??
     null;
 
   const waveHeight =
-    source.wave_height ??
-    source.waveHeight ??
+    source?.wave_height ??
+    source?.waveHeight ??
+    marineConditions?.wave_height ??
+    analysis?.wave_height ??
     null;
 
   const condition =
-    source.weather_condition ??
-    source.weatherCondition ??
-    source.condition ??
-    "N/A";
+    source?.weather_condition ??
+    source?.weatherCondition ??
+    marineConditions?.weather_condition ??
+    analysis?.weather_condition ??
+    source?.condition ??
+    "Unknown";
 
   const safetyRisk =
-    source.safety_risk ??
-    source.safetyRisk ??
-    "N/A";
+    source?.safety_risk ??
+    source?.safetyRisk ??
+    analysis?.safety_risk ??
+    analysis?.risk_level ??
+    safetyData?.safety ??
+    (
+      windSpeed !== null || waveHeight !== null
+        ? (
+            Number(windSpeed) > 30 || Number(waveHeight) > 2.5
+              ? "High"
+              : Number(windSpeed) > 15 || Number(waveHeight) > 1.5
+                ? "Moderate"
+                : "Low"
+          )
+        : "Unknown"
+    );
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -1749,6 +1839,25 @@ function SafeRoute() {
   const [endLat, setEndLat] = useState("9.8");
   const [endLon, setEndLon] = useState("76.3");
 
+  const [vesselClass, setVesselClass] = useState("motorized");
+
+  const vesselOptions = {
+    motorized: {
+      label: "Traditional Motorized Craft (OBM)",
+      threshold: 1.5,
+    },
+    trawler: {
+      label: "Mechanized Trawler",
+      threshold: 2.5,
+    },
+    deepsea: {
+      label: "Deep Sea Fishing Vessel",
+      threshold: 3.5,
+    },
+  };
+
+  const selectedVessel = vesselOptions[vesselClass];
+
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1766,6 +1875,7 @@ function SafeRoute() {
         start_lon: String(startLon),
         end_lat: String(endLat),
         end_lon: String(endLon),
+        vessel_class: selectedVessel.label,
       });
 
       const response = await fetch(
@@ -1785,7 +1895,7 @@ function SafeRoute() {
       console.error(err);
 
       setError(
-        "Safe Route analysis failed. Make sure the FastAPI backend is running on the ORCA backend and the /route-analysis endpoint is available."
+        "Safe Route analysis failed. Make sure the FastAPI backend is running on port 8000 and the /route-analysis endpoint is available."
       );
 
     } finally {
@@ -1797,6 +1907,7 @@ function SafeRoute() {
   };
 
   const routePoints =
+    result?.route_analysis?.route_points ||
     result?.route_points ||
     result?.route ||
     result?.points ||
@@ -1858,53 +1969,71 @@ function SafeRoute() {
           )
       : [];
 
-  const weatherRisk =
-    result?.weather_risk ??
-    result?.safety_risk ??
-    result?.risk ??
-    result?.weather?.safety_risk ??
-    "Unknown";
+ const routeData = result?.route_analysis || {};
+const weatherData = result?.weather || {};
+const safetyData = routeData?.safety || {};
+const alertsData = result?.alerts || {};
 
-  const geofenceStatus =
-    result?.geofence_status ??
-    result?.geofence ??
-    result?.geofence_result?.status ??
-    "Not evaluated";
+const weatherCondition =
+  weatherData?.weather_condition ??
+  routeData?.marine_conditions?.weather_condition ??
+  "Unknown";
 
-  const oceanCondition =
-    result?.ocean_condition ??
-    result?.ocean?.condition ??
-    result?.ocean_analysis?.ocean_condition ??
-    "Unknown";
+const windSpeed =
+  weatherData?.wind_speed ??
+  routeData?.marine_conditions?.wind_speed ??
+  null;
 
-  const windSpeed =
-    result?.wind_speed ??
-    result?.weather?.wind_speed ??
-    null;
+const waveHeight =
+  weatherData?.wave_height ??
+  routeData?.marine_conditions?.wave_height ??
+  null;
 
-  const waveHeight =
-    result?.wave_height ??
-    result?.weather?.wave_height ??
-    null;
+const weatherRisk =
+  safetyData?.safety === "Caution"
+    ? "Moderate"
+    : safetyData?.safety === "Unsafe"
+      ? "High"
+      : safetyData?.safety === "Safe"
+        ? "Low"
+        : waveHeight !== null
+          ? Number(waveHeight) > selectedVessel.threshold
+            ? "High"
+            : Number(waveHeight) > selectedVessel.threshold * 0.75
+              ? "Moderate"
+              : "Low"
+          : "Unknown";
 
-  const routeRisk =
-    result?.overall_risk ??
-    result?.route_risk ??
-    result?.risk ??
-    weatherRisk;
+const routeRisk =
+  safetyData?.safety === "Caution"
+    ? "Moderate"
+    : safetyData?.safety === "Unsafe"
+      ? "High"
+      : alertsData?.overall_level === "Low"
+        ? "Low"
+        : weatherRisk;
 
-  const isSafe =
-    result?.safe ??
-    result?.is_safe ??
-    result?.route_safe ??
-    String(routeRisk).toLowerCase() === "low";
+const isSafe =
+  routeRisk !== "High" &&
+  waveHeight !== null &&
+  Number(waveHeight) <= selectedVessel.threshold;
 
-  const reasoning =
-    result?.reasoning ??
-    result?.explanation ??
-    result?.recommendation ??
-    result?.decision ??
-    null;
+const geofenceStatus =
+  result?.geofence_status ??
+  result?.geofence_analysis?.status ??
+  "Not evaluated";
+
+const oceanCondition =
+  result?.ocean_condition ??
+  result?.ocean_analysis?.ocean_condition ??
+  "Unknown";
+
+const reasoning =
+  routeData?.recommendation ??
+  result?.reasoning ??
+  result?.explanation ??
+  "ORCA evaluated the route using available marine conditions.";
+
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -2075,6 +2204,38 @@ function SafeRoute() {
 
         </div>
 
+        {/* VESSEL CLASS SELECTOR */}
+        <div className="mt-6 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-400">
+                Select Vessel Class
+              </label>
+              <select
+                value={vesselClass}
+                onChange={(e) => setVesselClass(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none focus:border-cyan-500"
+              >
+                <option value="motorized">Traditional Motorized Craft (OBM) — prototype max wave 1.5 m</option>
+                <option value="trawler">Mechanized Trawler — prototype max wave 2.5 m</option>
+                <option value="deepsea">Deep Sea Fishing Vessel — prototype max wave 3.5 m</option>
+              </select>
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-2">
+              <p className="text-[11px] uppercase tracking-wider text-slate-500">
+                Selected vessel threshold
+              </p>
+              <p className="mt-1 text-sm font-semibold text-cyan-400">
+                {selectedVessel.label} · {selectedVessel.threshold.toFixed(1)} m
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Prototype vessel-class thresholds for ORCA demonstration; they are not official maritime safety limits.
+          </p>
+        </div>
+
         <button
           onClick={analyzeRoute}
           disabled={loading}
@@ -2134,7 +2295,7 @@ function SafeRoute() {
 
           {/* STATUS */}
 
-          <section className="grid gap-4 md:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-5">
 
             <MetricCard
               icon={
@@ -2158,6 +2319,13 @@ function SafeRoute() {
               value={formatValue(weatherRisk)}
               unit=""
               risk
+            />
+
+            <MetricCard
+              icon={<CloudRain />}
+              title="Weather"
+              value={formatValue(weatherCondition)}
+              unit=""
             />
 
             <MetricCard
@@ -2346,7 +2514,14 @@ function SafeRoute() {
 
           {/* CONDITIONS */}
 
-          <section className="grid gap-4 md:grid-cols-3">
+          <section className="grid gap-4 md:grid-cols-4">
+
+            <MetricCard
+              icon={<Navigation />}
+              title="Vessel Class"
+              value={selectedVessel.label}
+              unit=""
+            />
 
             <MetricCard
               icon={<Wind />}
@@ -2563,7 +2738,7 @@ function AlertsPage() {
       console.error("Alerts error:", err);
 
       setError(
-        "Marine alert analysis failed. Check that the FastAPI backend is running on the ORCA backend and the /alerts endpoint is available."
+        "Marine alert analysis failed. Check that the FastAPI backend is running on port 8000 and the /alerts endpoint is available."
       );
 
     } finally {
@@ -2581,14 +2756,39 @@ function AlertsPage() {
 
   const alertList =
     alerts?.alerts ||
+    alerts?.data?.alerts ||
     analysis?.alerts ||
     [];
 
+  const alertWeather =
+    alerts?.weather ||
+    alerts?.data?.weather ||
+    analysis?.weather ||
+    {};
+
+  const routeAnalysis =
+    alerts?.route_analysis ||
+    analysis?.route_analysis ||
+    {};
+
+  const marineConditions =
+    routeAnalysis?.marine_conditions ||
+    analysis?.marine_conditions ||
+    alerts?.marine_conditions ||
+    {};
+
+  const safetyData =
+    routeAnalysis?.safety ||
+    analysis?.safety ||
+    alerts?.safety ||
+    {};
+
   const overallLevel =
-    alerts?.overall_level ||
-    analysis?.overall_level ||
-    alerts?.alert_level ||
-    alerts?.risk_level ||
+    alerts?.overall_level ??
+    analysis?.overall_level ??
+    alerts?.alert_level ??
+    alerts?.risk_level ??
+    safetyData?.safety ??
     "Unknown";
 
   const scientificNote =
@@ -2598,21 +2798,29 @@ function AlertsPage() {
 
   const windSpeed =
     alerts?.wind_speed ??
+    alertWeather?.wind_speed ??
+    marineConditions?.wind_speed ??
     analysis?.wind_speed ??
     null;
 
   const waveHeight =
     alerts?.wave_height ??
+    alertWeather?.wave_height ??
+    marineConditions?.wave_height ??
     analysis?.wave_height ??
     null;
 
   const rainfall =
     alerts?.rainfall ??
+    alertWeather?.rainfall ??
+    marineConditions?.rainfall ??
     analysis?.rainfall ??
     null;
 
   const weatherCondition =
     alerts?.weather_condition ??
+    alertWeather?.weather_condition ??
+    marineConditions?.weather_condition ??
     analysis?.weather_condition ??
     "Unknown";
 
@@ -3917,8 +4125,38 @@ function ORCAResult({ data }) {
     data.llm_orchestration?.trusted_context?.observation_date ||
     "Unknown";
 
+  const fallbackActive =
+    Boolean(
+      data?.fallback ||
+      data?.llm_orchestration?.llm_planning_failed ||
+      data?.llm?.fallback ||
+      data?.llm?.llm_used === false
+    );
+
   return (
     <div className="space-y-6">
+
+      {fallbackActive && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-300">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-500" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">
+                ⚡ Deterministic Expert Mode Active
+              </p>
+              <p className="text-xs leading-5 text-amber-400/80">
+                LLM orchestration is unavailable or rate-limited. ORCA is executing its deterministic analysis pipeline using available environmental observations and rule-based specialist agents.
+              </p>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-md bg-amber-500/20 px-2.5 py-1 font-mono text-xs font-bold">
+            DATA-GROUNDED MODE
+          </span>
+        </div>
+      )}
 
       <section className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-6">
 

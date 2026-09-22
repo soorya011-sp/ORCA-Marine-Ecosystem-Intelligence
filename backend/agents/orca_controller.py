@@ -2309,20 +2309,13 @@ def run_spatial_pfz(
     }
 
 
-# ============================================================
-# ROUTE ANALYSIS
-# ============================================================
-
 def run_route_analysis(
     start_lat,
     start_lon,
     end_lat,
-    end_lon
+    end_lon,
+    vessel_class="Traditional Motorized Craft (OBM)"
 ):
-    """
-    Analyze route safety using marine weather data.
-    """
-
     weather_data = get_weather_data(
         start_lat,
         start_lon
@@ -2336,72 +2329,142 @@ def run_route_analysis(
         weather_code
     )
 
+    wind_speed = weather_data.get(
+        "wind_speed"
+    )
+
+    wave_height = weather_data.get(
+        "wave_height"
+    )
+
+    rainfall = weather_data.get(
+        "rainfall"
+    )
+
     route_result = analyze_route(
         start_lat=start_lat,
         start_lon=start_lon,
-
         end_lat=end_lat,
         end_lon=end_lon,
-
-        wind_speed=(
-            weather_data.get(
-                "wind_speed"
-            ) or 0
-        ),
-
-        wave_height=(
-            weather_data.get(
-                "wave_height"
-            ) or 0
-        ),
-
-        rainfall=(
-            weather_data.get(
-                "rainfall"
-            ) or 0
-        ),
-
-        weather_condition=
-            weather_condition
+        wind_speed=wind_speed or 0,
+        wave_height=wave_height or 0,
+        rainfall=rainfall or 0,
+        weather_condition=weather_condition
     )
 
+    route_points = route_result.get(
+        "route_points",
+        []
+    )
+
+    restricted_zones = []
+
+    geofence_result = analyze_geofence(
+        route_points=route_points,
+        restricted_zones=restricted_zones
+    )
+
+    geofence_status = geofence_result.get(
+        "status",
+        "Clear"
+    )
+
+    temperature = None
+    chlorophyll = None
+    salinity = 34.0
+
+    ocean_result = analyze_ocean(
+        temperature,
+        chlorophyll,
+        salinity
+    )
+
+    ocean_condition = ocean_result.get(
+        "ocean_condition",
+        "Unknown"
+    )
+
+    vessel_limits = {
+        "Traditional Motorized Craft (OBM)": 1.5,
+        "Mechanized Trawler": 2.5,
+        "Deep Sea Fishing Vessel": 3.5
+    }
+
+    if vessel_class not in vessel_limits:
+        vessel_class = "Traditional Motorized Craft (OBM)"
+
+    max_wave_threshold = vessel_limits[
+        vessel_class
+    ]
+
+    current_wave = (
+        float(wave_height)
+        if wave_height is not None
+        else None
+    )
+
+    if current_wave is None:
+        vessel_safety = "Unknown"
+        wave_clearance = False
+
+    elif current_wave <= max_wave_threshold:
+        vessel_safety = "Within Prototype Threshold"
+        wave_clearance = True
+
+    else:
+        vessel_safety = "Above Prototype Threshold"
+        wave_clearance = False
+
     alerts_result = generate_alerts(
-        wind_speed=weather_data.get(
-            "wind_speed"
-        ),
-
-        wave_height=weather_data.get(
-            "wave_height"
-        ),
-
-        rainfall=weather_data.get(
-            "rainfall"
-        ),
-
-        weather_condition=
-            weather_condition,
-
-        route_result=
-            route_result
+        wind_speed=wind_speed,
+        wave_height=wave_height,
+        rainfall=rainfall,
+        weather_condition=weather_condition,
+        route_result=route_result,
+        geofence_result=geofence_result
     )
 
     return {
         "project": "ORCA",
 
-        "route_analysis":
-            route_result,
+        "route_analysis": route_result,
 
-        "weather":
-            weather_data,
+        "weather": weather_data,
 
-        "alerts":
-            alerts_result,
+        "ocean_analysis": ocean_result,
 
-        "system_status":
+        "ocean_condition": ocean_condition,
+
+        "geofence_analysis": geofence_result,
+
+        "geofence_status": geofence_status,
+
+        "vessel_safety": {
+            "vessel_class": vessel_class,
+            "wave_height": current_wave,
+            "max_wave_threshold": max_wave_threshold,
+            "wave_clearance": wave_clearance,
+            "status": vessel_safety,
+            "threshold_type": "Prototype demonstration threshold",
+            "note": (
+                "Prototype thresholds are for ORCA demonstration "
+                "and must not be treated as official maritime "
+                "operating limits."
+            )
+        },
+
+        "route_visualization": {
+    "status": "Generated",
+    "route_points": route_points,
+    "description": "Route visualization data generated from the ORCA route analysis."
+},
+
+        "alerts": alerts_result,
+
+        "system_status": (
             "Route safety analysis completed"
+        )
     }
-
-
 # ============================================================
 # GEOFENCE ANALYSIS
 # ============================================================
@@ -2524,20 +2587,82 @@ def run_alert_analysis(
     wind_speed=None,
     wave_height=None,
     rainfall=None,
-    weather_condition="Unknown"
+    weather_condition=None
 ):
     """
-    Run ORCA alert analysis.
+    Run ORCA alert analysis using real marine weather data.
+
+    If weather values are not supplied by the API endpoint,
+    ORCA automatically fetches the latest available weather
+    data for the requested coordinates.
     """
 
+    # --------------------------------------------------------
+    # Fetch real weather data when values are missing
+    # --------------------------------------------------------
+
+    weather_data = {}
+
+    if (
+        wind_speed is None
+        or wave_height is None
+        or rainfall is None
+        or not weather_condition
+        or weather_condition == "Unknown"
+    ):
+        try:
+            weather_data = get_weather_data(
+                lat,
+                lon
+            )
+
+        except Exception as exc:
+            weather_data = {
+                "weather_error": str(exc)
+            }
+
+    # --------------------------------------------------------
+    # Use supplied values first.
+    # Otherwise use real Open-Meteo values.
+    # --------------------------------------------------------
+
     if wind_speed is None:
-        wind_speed = 0
+        wind_speed = weather_data.get(
+            "wind_speed"
+        )
 
     if wave_height is None:
-        wave_height = 0
+        wave_height = weather_data.get(
+            "wave_height"
+        )
 
     if rainfall is None:
-        rainfall = 0
+        rainfall = weather_data.get(
+            "rainfall"
+        )
+
+    # --------------------------------------------------------
+    # Convert WMO weather code to readable condition
+    # --------------------------------------------------------
+
+    if (
+        not weather_condition
+        or weather_condition == "Unknown"
+    ):
+
+        weather_code = weather_data.get(
+            "weather_code"
+        )
+
+        weather_condition = (
+            weather_code_to_condition(
+                weather_code
+            )
+        )
+
+    # --------------------------------------------------------
+    # Generate alerts using real values
+    # --------------------------------------------------------
 
     alert_result = generate_alerts(
         wind_speed=wind_speed,
@@ -2546,7 +2671,13 @@ def run_alert_analysis(
         weather_condition=weather_condition
     )
 
+    # --------------------------------------------------------
+    # Final response
+    # --------------------------------------------------------
+
     return {
+        "project": "ORCA",
+
         "query": query,
 
         "location": {
@@ -2554,24 +2685,44 @@ def run_alert_analysis(
             "longitude": lon
         },
 
-        "alert_analysis":
-            alert_result,
+        "weather": {
+            "wind_speed": wind_speed,
+            "wave_height": wave_height,
+            "rainfall": rainfall,
+            "weather_condition": weather_condition
+        },
 
-        "alerts":
-            alert_result.get(
-                "alerts",
-                []
-            ),
+        "wind_speed": wind_speed,
 
-        "overall_level":
-            alert_result.get(
-                "overall_level",
-                "Low"
-            ),
+        "wave_height": wave_height,
+
+        "rainfall": rainfall,
+
+        "weather_condition": weather_condition,
+
+        "weather_source": (
+            weather_data.get(
+                "source",
+                "Open-Meteo"
+            )
+        ),
+
+        "alert_analysis": alert_result,
+
+        "alerts": alert_result.get(
+            "alerts",
+            []
+        ),
+
+        "overall_level": alert_result.get(
+            "overall_level",
+            "Unknown"
+        ),
 
         "scientific_note": (
-            "ORCA alerts are automated decision-support signals "
-            "based on available marine and weather conditions. "
-            "Official marine warnings should take priority."
+            "ORCA alerts are automated decision-support "
+            "signals based on available marine and weather "
+            "conditions. Official marine warnings should "
+            "take priority."
         )
     }

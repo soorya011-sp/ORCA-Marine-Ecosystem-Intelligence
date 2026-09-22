@@ -1399,117 +1399,35 @@ def weather_location_analysis(
     }
 
 
-# ============================================================
-# ROUTE ANALYSIS
-# ============================================================
-
 @app.get("/route-analysis")
 def route_analysis(
     start_lat: float,
     start_lon: float,
     end_lat: float,
-    end_lon: float
+    end_lon: float,
+    vessel_class: str = "Traditional Motorized Craft (OBM)"
 ):
+    print("VESSEL FROM URL:", vessel_class)
 
-    weather_data = get_weather_data(
-        start_lat,
-        start_lon
-    )
-
-
-    wind_speed = weather_data.get(
-        "wind_speed"
-    )
-
-    wave_height = weather_data.get(
-        "wave_height"
-    )
-
-    rainfall = weather_data.get(
-        "rainfall"
-    )
-
-    weather_code = weather_data.get(
-        "weather_code"
-    )
-
-
-    weather_condition = (
-        weather_code_to_condition(
-            weather_code
+    try:
+        result = run_route_analysis(
+            start_lat=start_lat,
+            start_lon=start_lon,
+            end_lat=end_lat,
+            end_lon=end_lon,
+            vessel_class=vessel_class
         )
-    )
 
+        print("VESSEL SENT TO CONTROLLER:", vessel_class)
 
-    route_result = analyze_route(
+        return result
 
-        start_lat=start_lat,
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
 
-        start_lon=start_lon,
-
-        end_lat=end_lat,
-
-        end_lon=end_lon,
-
-        wind_speed=
-            wind_speed or 0,
-
-        wave_height=
-            wave_height or 0,
-
-        rainfall=
-            rainfall or 0,
-
-        weather_condition=
-            weather_condition
-    )
-
-
-    return {
-
-        "project":
-            "ORCA",
-
-        "route_analysis":
-            route_result,
-
-        "weather_source":
-            weather_data.get(
-                "source",
-                "Open-Meteo"
-            ),
-
-        "weather": {
-
-            "wind_speed":
-                wind_speed,
-
-            "wave_height":
-                wave_height,
-
-            "rainfall":
-                rainfall,
-
-            "weather_condition":
-                weather_condition
-        },
-
-        "scientific_note":
-            (
-                "ORCA evaluates route safety using "
-                "available marine weather conditions. "
-                "The result is decision support and "
-                "does not guarantee safe navigation."
-            )
-    }
-
-
-# ============================================================
-# RUN
-# ============================================================
-
-# Start with:
-#
-# python -m uvicorn main:app --host 127.0.0.1 --port 8001
-#
-# ============================================================
+        return {
+            "error": type(e).__name__,
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
