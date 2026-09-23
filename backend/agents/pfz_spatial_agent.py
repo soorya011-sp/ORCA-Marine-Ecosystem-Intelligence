@@ -1,4 +1,4 @@
-from agents.pfz_agent import calculate_pfz_score
+from backend.agents.pfz_agent import calculate_pfz_score
 
 
 # ============================================================

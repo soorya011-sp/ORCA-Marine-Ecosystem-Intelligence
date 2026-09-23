@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 from google import genai
 
-from agents.llm_agent_tools import (
+from backend.agents.llm_agent_tools import (
     GEMINI_ORCA_TOOLS,
     TOOL_FUNCTIONS,
     execute_tool_call,
@@ -36,7 +36,7 @@ from agents.llm_agent_tools import (
 # ENVIRONMENT
 # ============================================================
 
-load_dotenv()
+load_dotenv(dotenv_path="backend/.env")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
@@ -2061,3 +2061,4 @@ def get_orchestrator_status() -> Dict[str, Any]:
 # ============================================================
 # END
 # ============================================================
+

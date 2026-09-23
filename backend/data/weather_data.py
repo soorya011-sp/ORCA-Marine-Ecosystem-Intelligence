@@ -1,123 +1,144 @@
 import requests
 
 
+WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
+MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
+
+
+def weather_code_to_condition(weather_code):
+    if weather_code is None:
+        return "Unknown"
+
+    try:
+        weather_code = int(weather_code)
+    except Exception:
+        return "Unknown"
+
+    if weather_code == 0:
+        return "Clear Sky"
+    if weather_code in [1, 2, 3]:
+        return "Partly Cloudy"
+    if weather_code in [45, 48]:
+        return "Fog"
+    if weather_code in [51, 53, 55]:
+        return "Drizzle"
+    if weather_code in [56, 57]:
+        return "Freezing Drizzle"
+    if weather_code in [61, 63, 65]:
+        return "Rain"
+    if weather_code in [66, 67]:
+        return "Freezing Rain"
+    if weather_code in [71, 73, 75, 77]:
+        return "Snow"
+    if weather_code in [80, 81, 82]:
+        return "Rain Showers"
+    if weather_code in [85, 86]:
+        return "Snow Showers"
+    if weather_code == 95:
+        return "Thunderstorm"
+    if weather_code in [96, 99]:
+        return "Thunderstorm with Hail"
+
+    return "Unknown"
+
+
 def get_weather_data(lat, lon):
-    """
-    Get current weather and marine conditions
-    using Open-Meteo APIs.
-    """
-
-    weather_url = "https://api.open-meteo.com/v1/forecast"
-
-    marine_url = "https://marine-api.open-meteo.com/v1/marine"
-
-    weather_params = {
-        "latitude": lat,
-        "longitude": lon,
-        "current": [
-            "wind_speed_10m",
-            "precipitation",
-            "weather_code"
-        ],
-        "forecast_days": 1
-    }
-
-    marine_params = {
-        "latitude": lat,
-        "longitude": lon,
-        "current": [
-            "wave_height",
-            "wind_wave_height"
-        ],
-        "forecast_days": 1
-    }
 
     result = {
         "source": "Open-Meteo",
         "latitude": lat,
-        "longitude": lon
+        "longitude": lon,
+        "wind_speed": None,
+        "wind_direction": None,
+        "wave_height": None,
+        "wind_wave_height": None,
+        "rainfall": None,
+        "weather_code": None,
+        "weather_condition": "Unknown"
     }
 
-    # --------------------------------------------------
-    # Weather data
-    # --------------------------------------------------
+    # ==================================================
+    # WEATHER
+    # ==================================================
+
+    weather_params = {
+        "latitude": lat,
+        "longitude": lon,
+        "current": "wind_speed_10m,wind_direction_10m,precipitation,weather_code"
+    }
 
     try:
         response = requests.get(
-            weather_url,
+            WEATHER_URL,
             params=weather_params,
-            timeout=15
+            timeout=10
         )
 
         response.raise_for_status()
 
         weather = response.json()
+        current = weather.get("current", {})
 
-        current_weather = weather.get(
-            "current",
-            {}
-        )
+        result["wind_speed"] = current.get("wind_speed_10m")
+        result["wind_direction"] = current.get("wind_direction_10m")
+        result["rainfall"] = current.get("precipitation")
+        result["weather_code"] = current.get("weather_code")
 
-        result["wind_speed"] = current_weather.get(
-            "wind_speed_10m"
-        )
-
-        result["rainfall"] = current_weather.get(
-            "precipitation"
-        )
-
-        result["weather_code"] = current_weather.get(
-            "weather_code"
+        result["weather_condition"] = weather_code_to_condition(
+            result["weather_code"]
         )
 
     except Exception as e:
-
         result["weather_error"] = str(e)
 
-    # --------------------------------------------------
-    # Marine data
-    # --------------------------------------------------
+    # ==================================================
+    # MARINE
+    # ==================================================
+
+    marine_params = {
+        "latitude": lat,
+        "longitude": lon,
+        "current": "wave_height,wind_wave_height"
+    }
 
     try:
         response = requests.get(
-            marine_url,
+            MARINE_URL,
             params=marine_params,
-            timeout=15
+            timeout=10
         )
 
         response.raise_for_status()
 
         marine = response.json()
+        current_marine = marine.get("current", {})
 
-        current_marine = marine.get(
-            "current",
-            {}
-        )
-
-        result["wave_height"] = current_marine.get(
-            "wave_height"
-        )
-
-        result["wind_wave_height"] = current_marine.get(
-            "wind_wave_height"
-        )
+        result["wave_height"] = current_marine.get("wave_height")
+        result["wind_wave_height"] = current_marine.get("wind_wave_height")
 
     except Exception as e:
-
         result["marine_error"] = str(e)
 
     return result
 
 
-# ------------------------------------------------------
-# Test
-# ------------------------------------------------------
-
 if __name__ == "__main__":
 
-    result = get_weather_data(
-        9.5,
-        76.0
-    )
+    result = get_weather_data(9.5, 76.0)
 
-    print(result)
+    print("\nORCA WEATHER TEST")
+    print("=================")
+
+    print("Wind Speed:", result.get("wind_speed"), "km/h")
+    print("Wind Direction:", result.get("wind_direction"), "degrees")
+    print("Wave Height:", result.get("wave_height"), "m")
+    print("Wind Wave Height:", result.get("wind_wave_height"), "m")
+    print("Rainfall:", result.get("rainfall"), "mm")
+    print("Weather Code:", result.get("weather_code"))
+    print("Weather Condition:", result.get("weather_condition"))
+
+    if result.get("weather_error"):
+        print("Weather Error:", result.get("weather_error"))
+
+    if result.get("marine_error"):
+        print("Marine Error:", result.get("marine_error"))

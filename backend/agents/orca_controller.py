@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 # Marine data
 # ------------------------------------------------------------
 
-from data.marine_data import (
+from backend.data.marine_data import (
     get_marine_data,
     extract_marine_values,
     get_spatial_marine_data,
@@ -40,12 +40,12 @@ from data.marine_data import (
 # Query planning / routing
 # ------------------------------------------------------------
 
-from agents.planner_agent import (
+from backend.agents.planner_agent import (
     plan_query,
     build_execution_plan,
 )
 
-from agents.query_router import (
+from backend.agents.query_router import (
     route_query,
 )
 
@@ -54,7 +54,7 @@ from agents.query_router import (
 # LLM ORCHESTRATOR
 # ------------------------------------------------------------
 
-from agents.llm_orchestrator import (
+from backend.agents.llm_orchestrator import (
     plan_with_llm,
     synthesize_with_llm,
 )
@@ -64,39 +64,39 @@ from agents.llm_orchestrator import (
 # Specialist agents
 # ------------------------------------------------------------
 
-from agents.fish_agent import (
+from backend.agents.fish_agent import (
     analyze_fish,
 )
 
-from agents.ocean_agent import (
+from backend.agents.ocean_agent import (
     analyze_ocean,
 )
 
-from agents.ecosystem_agent import (
+from backend.agents.ecosystem_agent import (
     analyze_ecosystem,
 )
 
-from agents.risk_agent import (
+from backend.agents.risk_agent import (
     calculate_risk,
 )
 
-from agents.uncertainty_agent import (
+from backend.agents.uncertainty_agent import (
     calculate_uncertainty,
 )
 
-from agents.evidence_agent import (
+from backend.agents.evidence_agent import (
     find_evidence,
 )
 
-from agents.reasoning_agent import (
+from backend.agents.reasoning_agent import (
     generate_reasoning,
 )
 
-from agents.debate_agent import (
+from backend.agents.debate_agent import (
     analyze_agent_disagreement,
 )
 
-from agents.causal_reasoning_agent import (
+from backend.agents.causal_reasoning_agent import (
     build_causal_chain,
 )
 
@@ -105,15 +105,15 @@ from agents.causal_reasoning_agent import (
 # Decision / visualization / reporting
 # ------------------------------------------------------------
 
-from agents.decision_agent import (
+from backend.agents.decision_agent import (
     generate_decision,
 )
 
-from agents.visualization_agent import (
+from backend.agents.visualization_agent import (
     create_visualization_data,
 )
 
-from agents.report_agent import (
+from backend.agents.report_agent import (
     generate_report,
 )
 
@@ -122,15 +122,15 @@ from agents.report_agent import (
 # Weather / safety
 # ------------------------------------------------------------
 
-from data.weather_data import (
+from backend.data.weather_data import (
     get_weather_data,
 )
 
-from agents.weather_agent import (
+from backend.agents.weather_agent import (
     analyze_weather,
 )
 
-from agents.alert_agent import (
+from backend.agents.alert_agent import (
     generate_alerts,
 )
 
@@ -139,15 +139,15 @@ from agents.alert_agent import (
 # Route / geofence / PFZ
 # ------------------------------------------------------------
 
-from agents.route_agent import (
+from backend.agents.route_agent import (
     analyze_route,
 )
 
-from agents.geofence_agent import (
+from backend.agents.geofence_agent import (
     analyze_geofence,
 )
 
-from agents.pfz_spatial_agent import (
+from backend.agents.pfz_spatial_agent import (
     analyze_spatial_pfz,
 )
 

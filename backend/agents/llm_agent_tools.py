@@ -17,12 +17,12 @@ from typing import Any, Dict
 # DATA LAYER
 # ============================================================
 
-from data.marine_data import (
+from backend.data.marine_data import (
     get_marine_data,
     extract_marine_values,
 )
 
-from data.weather_data import (
+from backend.data.weather_data import (
     get_weather_data,
 )
 
@@ -31,55 +31,55 @@ from data.weather_data import (
 # SPECIALIST AGENTS
 # ============================================================
 
-from agents.fish_agent import (
+from backend.agents.fish_agent import (
     analyze_fish,
 )
 
-from agents.ocean_agent import (
+from backend.agents.ocean_agent import (
     analyze_ocean,
 )
 
-from agents.ecosystem_agent import (
+from backend.agents.ecosystem_agent import (
     analyze_ecosystem,
 )
 
-from agents.weather_agent import (
+from backend.agents.weather_agent import (
     analyze_weather,
 )
 
-from agents.risk_agent import (
+from backend.agents.risk_agent import (
     calculate_risk,
 )
 
-from agents.evidence_agent import (
+from backend.agents.evidence_agent import (
     find_evidence,
 )
 
-from agents.reasoning_agent import (
+from backend.agents.reasoning_agent import (
     generate_reasoning,
 )
 
-from agents.uncertainty_agent import (
+from backend.agents.uncertainty_agent import (
     calculate_uncertainty,
 )
 
-from agents.debate_agent import (
+from backend.agents.debate_agent import (
     analyze_agent_disagreement,
 )
 
-from agents.causal_reasoning_agent import (
+from backend.agents.causal_reasoning_agent import (
     build_causal_chain,
 )
 
-from agents.alert_agent import (
+from backend.agents.alert_agent import (
     generate_alerts,
 )
 
-from agents.route_agent import (
+from backend.agents.route_agent import (
     analyze_route,
 )
 
-from agents.geofence_agent import (
+from backend.agents.geofence_agent import (
     analyze_geofence,
 )
 
