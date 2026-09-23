@@ -52,10 +52,20 @@ def safe_float(value):
 # ============================================================
 
 def get_sst(lat, lon, date):
+    """
+    Fetch SST for one geographic point.
+    """
+    query = (
+        f"?analysed_sst"
+        f"[({date}T00:00:00Z)]"
+        f"[({lat})]"
+        f"[({lon})]"
+    )
+
     try:
         response = requests.get(
-            NOAA_SST_URL + f"?analysed_sst[({date}T00:00:00Z)][({lat})][({lon})]",
-            timeout=10
+            NOAA_SST_URL + query,
+            timeout=15
         )
         response.raise_for_status()
 
@@ -71,6 +81,7 @@ def get_sst(lat, lon, date):
         }
 
     except Exception as noaa_error:
+        # Fallback to Open-Meteo Marine API if NOAA is unavailable or times out
         try:
             response = requests.get(
                 "https://marine-api.open-meteo.com/v1/marine",
@@ -106,51 +117,77 @@ def get_sst(lat, lon, date):
                 "latitude": lat,
                 "longitude": lon,
                 "date": date,
-                "error": str(fallback_error)
+                "error": f"NOAA: {noaa_error}; Fallback: {fallback_error}"
             }
 
+
 # ============================================================
-# EXTRACT MARINE VALUES
+# SINGLE POINT - CHLOROPHYLL
 # ============================================================
 
-def extract_marine_values(marine_data):
+def get_chlorophyll(lat, lon, date):
     """
-    Extract SST and chlorophyll values from get_marine_data().
-
-    Returns:
-        (temperature, chlorophyll)
+    Fetch chlorophyll for one geographic point.
     """
-
-    temperature = None
-    chlorophyll = None
+    query = (
+        f"?CHL"
+        f"[({date}T00:00:00Z)]"
+        f"[({lat})]"
+        f"[({lon})]"
+    )
 
     try:
-        sst_result = marine_data.get("sst", {})
-        temperature = extract_value(sst_result, variable="sst")
-    except Exception:
-        temperature = None
+        response = requests.get(
+            INCOIS_CHL_URL + query,
+            timeout=15,
+            verify=False
+        )
+        response.raise_for_status()
 
-    try:
-        chl_result = marine_data.get("chlorophyll", {})
-        chlorophyll = extract_value(chl_result, variable="chlorophyll")
-    except Exception:
-        chlorophyll = None
+        data = response.json()
 
-    return temperature, chlorophyll
+        return {
+            "source": "INCOIS",
+            "variable": "chlorophyll",
+            "latitude": lat,
+            "longitude": lon,
+            "date": date,
+            "data": data
+        }
 
-    def extract_value(result):
+    except Exception as e:
+        return {
+            "source": "INCOIS",
+            "variable": "chlorophyll",
+            "latitude": lat,
+            "longitude": lon,
+            "date": date,
+            "error": str(e)
+        }
+
+
+# ============================================================
+# EXTRACTION HELPERS (WITH KELVIN -> CELSIUS CONVERSION)
+# ============================================================
+
+def extract_value(result):
+    """
+    Extract the first numeric value from an ERDDAP response.
+    Converts Kelvin to Celsius for SST if value > 200.
+    """
     try:
         val = None
 
-        if result.get("value") is not None:
-            val = safe_float(result["value"])
-        else:
-            rows = result.get("data", {}).get("table", {}).get("rows", [])
-            if rows:
-                val = safe_float(rows[0][-1])
+        if isinstance(result, dict):
+            if result.get("value") is not None:
+                val = safe_float(result["value"])
+            else:
+                rows = result.get("data", {}).get("table", {}).get("rows", [])
+                if rows:
+                    val = safe_float(rows[0][-1])
 
         # NOAA MUR SST returns temperature in Kelvin (~300 K).
-        # If the value is > 200, convert it to Celsius:
+        # Convert to Celsius if value is > 200:
         if val is not None and val > 200:
             val = round(val - 273.15, 2)
 
@@ -161,15 +198,40 @@ def extract_marine_values(marine_data):
 
     return None
 
+
+def extract_marine_values(marine_data):
+    """
+    Extract SST and chlorophyll values from get_marine_data().
+
+    Returns:
+        (temperature, chlorophyll)
+    """
+    temperature = None
+    chlorophyll = None
+
+    try:
+        sst_result = marine_data.get("sst", {})
+        temperature = extract_value(sst_result)
+    except Exception:
+        temperature = None
+
+    try:
+        chl_result = marine_data.get("chlorophyll", {})
+        chlorophyll = extract_value(chl_result)
+    except Exception:
+        chlorophyll = None
+
+    return temperature, chlorophyll
+
+
 # ============================================================
-# SINGLE LOCATION MARINE DATA
+# SINGLE LOCATION MARINE DATA (PARALLEL FETCH)
 # ============================================================
+
 def get_marine_data(lat, lon, date):
     """
-    Fetch SST and chlorophyll for one location IN PARALLEL.
-    Also retries with recent dates if NOAA returns null data.
+    Fetch SST and chlorophyll for one location in parallel.
     """
-
     def fetch_sst():
         return get_sst(lat, lon, date)
 
@@ -183,19 +245,14 @@ def get_marine_data(lat, lon, date):
         chlorophyll = f_chl.result()
 
     return {
-
         "location": {
             "latitude": lat,
             "longitude": lon
         },
-
         "date": date,
-
         "chlorophyll": chlorophyll,
-
         "sst": sst
     }
-
 
 
 # ============================================================
@@ -206,13 +263,9 @@ def extract_rows(result):
     """
     Extract rows from an ERDDAP JSON response.
     """
-
     try:
-
         return result["table"]["rows"]
-
     except Exception:
-
         return []
 
 
@@ -230,10 +283,7 @@ def get_spatial_sst(
 ):
     """
     Fetch an entire SST grid using ONE ERDDAP request.
-
-    This replaces hundreds of individual point requests.
     """
-
     query = (
         f"?analysed_sst"
         f"[({date}T00:00:00Z)]"
@@ -242,25 +292,16 @@ def get_spatial_sst(
     )
 
     try:
-
         response = requests.get(
             NOAA_SST_URL + query,
             timeout=REQUEST_TIMEOUT
         )
-
         response.raise_for_status()
 
-        data = response.json()
-
-        return data
+        return response.json()
 
     except Exception as e:
-
-        print(
-            "NOAA spatial SST error:",
-            e
-        )
-
+        print("NOAA spatial SST error:", e)
         return {
             "error": str(e)
         }
@@ -280,10 +321,7 @@ def get_spatial_chlorophyll(
 ):
     """
     Fetch an entire chlorophyll grid using ONE ERDDAP request.
-
-    This replaces hundreds of individual point requests.
     """
-
     query = (
         f"?CHL"
         f"[({date}T00:00:00Z)]"
@@ -292,26 +330,17 @@ def get_spatial_chlorophyll(
     )
 
     try:
-
         response = requests.get(
             INCOIS_CHL_URL + query,
             timeout=REQUEST_TIMEOUT,
             verify=False
         )
-
         response.raise_for_status()
 
-        data = response.json()
-
-        return data
+        return response.json()
 
     except Exception as e:
-
-        print(
-            "INCOIS spatial chlorophyll error:",
-            e
-        )
-
+        print("INCOIS spatial chlorophyll error:", e)
         return {
             "error": str(e)
         }
@@ -331,24 +360,19 @@ def build_grid(
     """
     Create the expected spatial grid.
     """
-
     locations = []
-
     lat = min_lat
 
     while lat <= max_lat + 0.00001:
-
         lon = min_lon
 
         while lon <= max_lon + 0.00001:
-
             locations.append(
                 {
                     "latitude": round(lat, 4),
                     "longitude": round(lon, 4)
                 }
             )
-
             lon += step
 
         lat += step
@@ -368,46 +392,6 @@ def get_spatial_marine_data(
     date,
     step=0.2
 ):
-    """
-    FAST spatial marine data retrieval.
-
-    OLD METHOD:
-        143 locations
-        x 2 requests
-        = ~286 requests
-
-    NEW METHOD:
-        1 NOAA request
-        1 INCOIS request
-        = 2 requests
-
-    The PFZ calculations are then performed locally.
-    """
-
-    print()
-    print("=" * 60)
-    print("ORCA FAST SPATIAL MARINE DATA")
-    print("=" * 60)
-
-    print(
-        f"Latitude: {min_lat} -> {max_lat}"
-    )
-
-    print(
-        f"Longitude: {min_lon} -> {max_lon}"
-    )
-
-    print(
-        f"Date: {date}"
-    )
-
-    print(
-        f"Grid step: {step}"
-    )
-
-    print()
-    print("Fetching NOAA SST grid...")
-
     sst_data = get_spatial_sst(
         min_lat,
         max_lat,
@@ -417,8 +401,6 @@ def get_spatial_marine_data(
         step
     )
 
-    print("Fetching INCOIS chlorophyll grid...")
-
     chl_data = get_spatial_chlorophyll(
         min_lat,
         max_lat,
@@ -427,8 +409,6 @@ def get_spatial_marine_data(
         date,
         step
     )
-
-    print("Building ORCA spatial grid...")
 
     grid = build_grid(
         min_lat,
@@ -441,34 +421,23 @@ def get_spatial_marine_data(
     # --------------------------------------------------------
     # Parse SST
     # --------------------------------------------------------
-
-    sst_rows = extract_rows(
-        sst_data
-    )
-
+    sst_rows = extract_rows(sst_data)
     sst_values = {}
 
     for row in sst_rows:
-
         try:
-
-            # Expected:
-            # [time, latitude, longitude, value]
-
             latitude = safe_float(row[1])
             longitude = safe_float(row[2])
             temperature = safe_float(row[3])
 
-            if (
-                latitude is not None
-                and longitude is not None
-            ):
+            if temperature is not None and temperature > 200:
+                temperature = round(temperature - 273.15, 2)
 
+            if latitude is not None and longitude is not None:
                 key = (
                     round(latitude, 4),
                     round(longitude, 4)
                 )
-
                 sst_values[key] = temperature
 
         except Exception:
@@ -477,34 +446,20 @@ def get_spatial_marine_data(
     # --------------------------------------------------------
     # Parse Chlorophyll
     # --------------------------------------------------------
-
-    chl_rows = extract_rows(
-        chl_data
-    )
-
+    chl_rows = extract_rows(chl_data)
     chl_values = {}
 
     for row in chl_rows:
-
         try:
-
-            # Expected:
-            # [time, latitude, longitude, value]
-
             latitude = safe_float(row[1])
             longitude = safe_float(row[2])
             chlorophyll = safe_float(row[3])
 
-            if (
-                latitude is not None
-                and longitude is not None
-            ):
-
+            if latitude is not None and longitude is not None:
                 key = (
                     round(latitude, 4),
                     round(longitude, 4)
                 )
-
                 chl_values[key] = chlorophyll
 
         except Exception:
@@ -513,113 +468,52 @@ def get_spatial_marine_data(
     # --------------------------------------------------------
     # Combine
     # --------------------------------------------------------
-
     locations = []
 
     for point in grid:
-
         latitude = point["latitude"]
         longitude = point["longitude"]
-
-        key = (
-            latitude,
-            longitude
-        )
+        key = (latitude, longitude)
 
         locations.append(
             {
                 "latitude": latitude,
                 "longitude": longitude,
-
-                "temperature": sst_values.get(
-                    key
-                ),
-
-                "chlorophyll": chl_values.get(
-                    key
-                ),
-
+                "temperature": sst_values.get(key),
+                "chlorophyll": chl_values.get(key),
                 "sst_source": "NOAA CoastWatch",
-
                 "chlorophyll_source": "INCOIS",
-
                 "date": date
             }
         )
 
     valid_sst = sum(
-        1
-        for location in locations
-        if location["temperature"] is not None
+        1 for loc in locations if loc["temperature"] is not None
     )
-
     valid_chl = sum(
-        1
-        for location in locations
-        if location["chlorophyll"] is not None
+        1 for loc in locations if loc["chlorophyll"] is not None
     )
-
     valid_both = sum(
-        1
-        for location in locations
-        if (
-            location["temperature"] is not None
-            and
-            location["chlorophyll"] is not None
-        )
+        1 for loc in locations
+        if loc["temperature"] is not None and loc["chlorophyll"] is not None
     )
-
-    print()
-    print(
-        f"Grid points: {len(locations)}"
-    )
-
-    print(
-        f"Valid SST: {valid_sst}"
-    )
-
-    print(
-        f"Valid chlorophyll: {valid_chl}"
-    )
-
-    print(
-        f"Valid combined points: {valid_both}"
-    )
-
-    print("=" * 60)
-    print()
 
     return {
-
         "source": [
             "NOAA CoastWatch",
             "INCOIS"
         ],
-
         "date": date,
-
         "bounds": {
-
             "min_lat": min_lat,
-
             "max_lat": max_lat,
-
             "min_lon": min_lon,
-
             "max_lon": max_lon
         },
-
         "grid_step": step,
-
-        "total_locations": len(
-            locations
-        ),
-
+        "total_locations": len(locations),
         "valid_sst_locations": valid_sst,
-
         "valid_chlorophyll_locations": valid_chl,
-
         "valid_combined_locations": valid_both,
-
         "locations": locations
     }
