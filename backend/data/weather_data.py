@@ -104,64 +104,50 @@ def get_weather_data(lat, lon):
         print("OPEN-METEO WEATHER FAILED:", str(e))
 
     # Fallback: wttr.in
-    if not weather_success:
-
+        if not weather_success:
         try:
-
-            fallback_url = (
-                f"https://wttr.in/{lat},{lon}"
-            )
-
-            response = requests.get(
+            fallback_url = f"https://wttr.in/{lat},{lon}"
+            fallback_response = requests.get(
                 fallback_url,
                 params={"format": "j1"},
-                timeout=8,
+                timeout=10,
                 headers={
-                    "User-Agent": "ORCA-Marine-Ecosystem-Intelligence/1.0"
+                    "User-Agent": "Mozilla/5.0"
                 }
             )
+            fallback_response.raise_for_status()
 
-            response.raise_for_status()
+            fallback_data = fallback_response.json()
 
-            fallback = response.json()
+            current = fallback_data.get("current_condition", [])
 
-            current = fallback["current_condition"][0]
+            if current:
+                current = current[0]
 
-            result["wind_speed"] = float(
-                current.get("windspeedKmph", 0)
-            )
+                result["wind_speed"] = float(
+                    current.get("windspeedKmph", 0)
+                )
 
-            result["wind_direction"] = float(
-                current.get("winddirDegree", 0)
-            )
+                result["wind_direction"] = float(
+                    current.get("winddirDegree", 0)
+                )
 
-            result["rainfall"] = float(
-                current.get("precipMM", 0)
-            )
+                result["rainfall"] = float(
+                    current.get("precipMM", 0)
+                )
 
-            weather_desc = current.get(
-                "weatherDesc",
-                [{"value": "Unknown"}]
-            )[0]["value"]
+                result["weather_condition"] = (
+                    current.get("weatherDesc", [{}])[0]
+                    .get("value", "Unknown")
+                )
 
-            result["weather_condition"] = weather_desc
-
-            result["weather_source"] = "wttr.in"
-
-            print(
-                "WTTR.IN WEATHER FALLBACK RESPONSE:",
-                current
-            )
+                result["weather_code"] = int(
+                    current.get("weatherCode", 0)
+                )
 
         except Exception as e:
-
             result["weather_error"] = (
-                f"{type(e).__name__}: {str(e)}"
-            )
-
-            print(
-                "ALL WEATHER SOURCES FAILED:",
-                result["weather_error"]
+                f"Fallback: {type(e).__name__}: {str(e)}"
             )
 
     # ==============================
