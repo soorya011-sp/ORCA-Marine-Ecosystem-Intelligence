@@ -57,9 +57,9 @@ def get_weather_data(lat, lon):
         "weather_condition": "Unknown"
     }
 
-    # ==================================================
+        # ==============================
     # WEATHER
-    # ==================================================
+    # ==============================
 
     weather_params = {
         "latitude": lat,
@@ -67,11 +67,18 @@ def get_weather_data(lat, lon):
         "current": "wind_speed_10m,wind_direction_10m,precipitation,weather_code"
     }
 
+    weather_success = False
+
+    # Primary: Open-Meteo
     try:
+
         response = requests.get(
             WEATHER_URL,
             params=weather_params,
-            timeout=10
+            timeout=8,
+            headers={
+                "User-Agent": "ORCA-Marine-Ecosystem-Intelligence/1.0"
+            }
         )
 
         response.raise_for_status()
@@ -88,12 +95,78 @@ def get_weather_data(lat, lon):
             result["weather_code"]
         )
 
-    except Exception as e:
-        result["weather_error"] = str(e)
+        weather_success = True
 
-    # ==================================================
+        print("OPEN-METEO WEATHER RESPONSE:", weather)
+
+    except Exception as e:
+
+        print("OPEN-METEO WEATHER FAILED:", str(e))
+
+    # Fallback: wttr.in
+    if not weather_success:
+
+        try:
+
+            fallback_url = (
+                f"https://wttr.in/{lat},{lon}"
+            )
+
+            response = requests.get(
+                fallback_url,
+                params={"format": "j1"},
+                timeout=8,
+                headers={
+                    "User-Agent": "ORCA-Marine-Ecosystem-Intelligence/1.0"
+                }
+            )
+
+            response.raise_for_status()
+
+            fallback = response.json()
+
+            current = fallback["current_condition"][0]
+
+            result["wind_speed"] = float(
+                current.get("windspeedKmph", 0)
+            )
+
+            result["wind_direction"] = float(
+                current.get("winddirDegree", 0)
+            )
+
+            result["rainfall"] = float(
+                current.get("precipMM", 0)
+            )
+
+            weather_desc = current.get(
+                "weatherDesc",
+                [{"value": "Unknown"}]
+            )[0]["value"]
+
+            result["weather_condition"] = weather_desc
+
+            result["weather_source"] = "wttr.in"
+
+            print(
+                "WTTR.IN WEATHER FALLBACK RESPONSE:",
+                current
+            )
+
+        except Exception as e:
+
+            result["weather_error"] = (
+                f"{type(e).__name__}: {str(e)}"
+            )
+
+            print(
+                "ALL WEATHER SOURCES FAILED:",
+                result["weather_error"]
+            )
+
+    # ==============================
     # MARINE
-    # ==================================================
+    # ==============================
 
     marine_params = {
         "latitude": lat,
@@ -105,19 +178,35 @@ def get_weather_data(lat, lon):
         response = requests.get(
             MARINE_URL,
             params=marine_params,
-            timeout=10
+            timeout=20,
+            headers={
+                "User-Agent": "ORCA-Marine-Ecosystem-Intelligence/1.0"
+            }
         )
 
         response.raise_for_status()
 
         marine = response.json()
+
+        print("OPEN-METEO MARINE RESPONSE:", marine)
+
         current_marine = marine.get("current", {})
 
         result["wave_height"] = current_marine.get("wave_height")
-        result["wind_wave_height"] = current_marine.get("wind_wave_height")
+        result["wind_wave_height"] = current_marine.get(
+            "wind_wave_height"
+        )
 
     except Exception as e:
-        result["marine_error"] = str(e)
+
+        result["marine_error"] = (
+            f"{type(e).__name__}: {str(e)}"
+        )
+
+        print(
+            "OPEN-METEO MARINE ERROR:",
+            result["marine_error"]
+        )
 
     return result
 
