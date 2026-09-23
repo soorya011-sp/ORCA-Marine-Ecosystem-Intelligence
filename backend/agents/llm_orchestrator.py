@@ -39,7 +39,7 @@ from agents.llm_agent_tools import (
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 if not GEMINI_API_KEY:
     raise RuntimeError(
@@ -1390,11 +1390,15 @@ def run_agentic_llm(
     query: str,
     lat: float = 9.5,
     lon: float = 76.0,
-    date: str = "2020-05-01",
+    date: str = None,
     salinity: float = 34.0,
     species: str = "Indian Oil Sardine",
-    max_tool_rounds: int = 8,
+    max_tool_rounds: int = 5,
 ) -> Dict[str, Any]:
+
+    from datetime import datetime, timedelta
+    if date is None:
+        date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     print(
         "\n=================================================="
@@ -1993,10 +1997,14 @@ def orchestrate_with_llm(
     agent_results: Dict[str, Any] | None = None,
     lat: float = 9.5,
     lon: float = 76.0,
-    date: str = "2020-05-01",
+    date: str = None,
     salinity: float = 34.0,
     species: str = "Indian Oil Sardine",
 ) -> Dict[str, Any]:
+
+    from datetime import datetime, timedelta
+    if date is None:
+        date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     plan = plan_with_llm(
         query

@@ -1,5 +1,6 @@
 import requests
 import urllib3
+from concurrent.futures import ThreadPoolExecutor
 
 urllib3.disable_warnings(
     urllib3.exceptions.InsecureRequestWarning
@@ -51,26 +52,11 @@ def safe_float(value):
 # ============================================================
 
 def get_sst(lat, lon, date):
-    """
-    Fetch SST for one geographic point.
-
-    Source:
-    NOAA CoastWatch MUR SST
-    """
-
-    query = (
-        f"?analysed_sst"
-        f"[({date}T00:00:00Z)]"
-        f"[({lat})]"
-        f"[({lon})]"
-    )
-
     try:
         response = requests.get(
-            NOAA_SST_URL + query,
-            timeout=REQUEST_TIMEOUT
+            NOAA_SST_URL + f"?analysed_sst[({date}T00:00:00Z)][({lat})][({lon})]",
+            timeout=10
         )
-
         response.raise_for_status()
 
         data = response.json()
@@ -84,93 +70,44 @@ def get_sst(lat, lon, date):
             "data": data
         }
 
-    except Exception as e:
+    except Exception as noaa_error:
+        try:
+            response = requests.get(
+                "https://marine-api.open-meteo.com/v1/marine",
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current": "sea_surface_temperature"
+                },
+                timeout=10
+            )
+            response.raise_for_status()
 
-        return {
-            "source": "NOAA CoastWatch",
-            "variable": "sea_surface_temperature",
-            "latitude": lat,
-            "longitude": lon,
-            "date": date,
-            "error": str(e)
-        }
+            data = response.json()
+            temperature = data.get("current", {}).get(
+                "sea_surface_temperature"
+            )
 
+            return {
+                "source": "Open-Meteo Marine",
+                "variable": "sea_surface_temperature",
+                "latitude": lat,
+                "longitude": lon,
+                "date": data.get("current", {}).get("time", date),
+                "value": temperature,
+                "data": data,
+                "fallback": True
+            }
 
-# ============================================================
-# SINGLE POINT - CHLOROPHYLL
-# ============================================================
-
-def get_chlorophyll(lat, lon, date):
-    """
-    Fetch chlorophyll for one geographic point.
-
-    Source:
-    INCOIS Oceansat-2 OCM
-    """
-
-    query = (
-        f"?CHL"
-        f"[({date}T00:00:00Z)]"
-        f"[({lat})]"
-        f"[({lon})]"
-    )
-
-    try:
-        response = requests.get(
-            INCOIS_CHL_URL + query,
-            timeout=REQUEST_TIMEOUT,
-            verify=False
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        return {
-            "source": "INCOIS",
-            "variable": "chlorophyll",
-            "latitude": lat,
-            "longitude": lon,
-            "date": date,
-            "data": data
-        }
-
-    except Exception as e:
-
-        return {
-            "source": "INCOIS",
-            "variable": "chlorophyll",
-            "latitude": lat,
-            "longitude": lon,
-            "date": date,
-            "error": str(e)
-        }
-
-
-# ============================================================
-# EXTRACT SINGLE VALUE
-# ============================================================
-
-def extract_value(result):
-    """
-    Extract the first numeric value from an ERDDAP response.
-    """
-
-    try:
-
-        rows = result["data"]["table"]["rows"]
-
-        if rows:
-
-            row = rows[0]
-
-            # Usually the last element is the variable value
-            return safe_float(row[-1])
-
-    except Exception:
-        pass
-
-    return None
+        except Exception as fallback_error:
+            return {
+                "source": "NOAA CoastWatch",
+                "variable": "sea_surface_temperature",
+                "latitude": lat,
+                "longitude": lon,
+                "date": date,
+                "error": str(fallback_error)
+            }
 
 # ============================================================
 # EXTRACT MARINE VALUES
@@ -179,7 +116,7 @@ def extract_value(result):
 def extract_marine_values(marine_data):
     """
     Extract SST and chlorophyll values from get_marine_data().
-    
+
     Returns:
         (temperature, chlorophyll)
     """
@@ -189,38 +126,61 @@ def extract_marine_values(marine_data):
 
     try:
         sst_result = marine_data.get("sst", {})
-        temperature = extract_value(sst_result)
+        temperature = extract_value(sst_result, variable="sst")
     except Exception:
         temperature = None
 
     try:
         chl_result = marine_data.get("chlorophyll", {})
-        chlorophyll = extract_value(chl_result)
+        chlorophyll = extract_value(chl_result, variable="chlorophyll")
     except Exception:
         chlorophyll = None
 
     return temperature, chlorophyll
 
+    def extract_value(result):
+    try:
+        val = None
+
+        if result.get("value") is not None:
+            val = safe_float(result["value"])
+        else:
+            rows = result.get("data", {}).get("table", {}).get("rows", [])
+            if rows:
+                val = safe_float(rows[0][-1])
+
+        # NOAA MUR SST returns temperature in Kelvin (~300 K).
+        # If the value is > 200, convert it to Celsius:
+        if val is not None and val > 200:
+            val = round(val - 273.15, 2)
+
+        return val
+
+    except Exception:
+        pass
+
+    return None
+
 # ============================================================
 # SINGLE LOCATION MARINE DATA
 # ============================================================
-
 def get_marine_data(lat, lon, date):
     """
-    Fetch SST and chlorophyll for one location.
+    Fetch SST and chlorophyll for one location IN PARALLEL.
+    Also retries with recent dates if NOAA returns null data.
     """
 
-    sst = get_sst(
-        lat,
-        lon,
-        date
-    )
+    def fetch_sst():
+        return get_sst(lat, lon, date)
 
-    chlorophyll = get_chlorophyll(
-        lat,
-        lon,
-        date
-    )
+    def fetch_chl():
+        return get_chlorophyll(lat, lon, date)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_sst = executor.submit(fetch_sst)
+        f_chl = executor.submit(fetch_chl)
+        sst = f_sst.result()
+        chlorophyll = f_chl.result()
 
     return {
 
@@ -235,6 +195,7 @@ def get_marine_data(lat, lon, date):
 
         "sst": sst
     }
+
 
 
 # ============================================================

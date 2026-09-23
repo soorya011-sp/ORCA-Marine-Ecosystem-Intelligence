@@ -2,6 +2,7 @@
 # ORCA - FASTAPI BACKEND
 # ============================================================
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from fastapi import FastAPI
@@ -70,7 +71,7 @@ app.add_middleware(
 DEFAULT_SPECIES = "Indian Oil Sardine"
 DEFAULT_LAT = 9.5
 DEFAULT_LON = 76.0
-DEFAULT_DATE = "2020-05-01"
+DEFAULT_DATE = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
 DEFAULT_SALINITY = 34.0
 
 
@@ -1191,10 +1192,14 @@ def ocean_location_analysis(
 
         if sst_rows:
 
-            temperature = float(
+            raw_temp = float(
                 sst_rows[0][-1]
             )
-
+            # NOAA MUR SST is in Kelvin — convert to Celsius
+            if raw_temp is not None and raw_temp > 200:
+                temperature = round(raw_temp - 273.15, 4)
+            else:
+                temperature = raw_temp
 
     except Exception:
 

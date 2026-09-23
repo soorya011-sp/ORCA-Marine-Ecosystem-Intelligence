@@ -87,6 +87,7 @@ from agents.geofence_agent import (
 # ============================================================
 # DEFAULTS
 # ============================================================
+from datetime import datetime as _datetime, timedelta as _timedelta
 
 DEFAULT_SPECIES = "Indian Oil Sardine"
 
@@ -96,7 +97,7 @@ DEFAULT_LON = 76.0
 
 DEFAULT_SALINITY = 34.0
 
-DEFAULT_DATE = "2020-05-01"
+DEFAULT_DATE = (_datetime.utcnow() - _timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 # ============================================================
