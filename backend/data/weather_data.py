@@ -1,4 +1,3 @@
-
 import requests
 
 
@@ -7,40 +6,43 @@ MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
 
 
 def weather_code_to_condition(weather_code):
-    if weather_code is None:
-        return "Unknown"
-
     try:
-        weather_code = int(weather_code)
-    except Exception:
-        return "Unknown"
+        code = int(weather_code)
+    except (TypeError, ValueError):
+        return "Clear"
 
-    if weather_code == 0:
-        return "Clear Sky"
-    if weather_code in [1, 2, 3]:
-        return "Partly Cloudy"
-    if weather_code in [45, 48]:
-        return "Fog"
-    if weather_code in [51, 53, 55]:
-        return "Drizzle"
-    if weather_code in [56, 57]:
-        return "Freezing Drizzle"
-    if weather_code in [61, 63, 65]:
-        return "Rain"
-    if weather_code in [66, 67]:
-        return "Freezing Rain"
-    if weather_code in [71, 73, 75, 77]:
-        return "Snow"
-    if weather_code in [80, 81, 82]:
-        return "Rain Showers"
-    if weather_code in [85, 86]:
-        return "Snow Showers"
-    if weather_code == 95:
-        return "Thunderstorm"
-    if weather_code in [96, 99]:
-        return "Thunderstorm with Hail"
+    conditions = {
+        0: "Clear",
+        1: "Mainly Clear",
+        2: "Partly Cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Fog",
+        51: "Drizzle",
+        53: "Drizzle",
+        55: "Drizzle",
+        56: "Freezing Drizzle",
+        57: "Freezing Drizzle",
+        61: "Rain",
+        63: "Rain",
+        65: "Heavy Rain",
+        66: "Freezing Rain",
+        67: "Freezing Rain",
+        71: "Snow",
+        73: "Snow",
+        75: "Heavy Snow",
+        77: "Snow Grains",
+        80: "Rain Showers",
+        81: "Rain Showers",
+        82: "Heavy Rain Showers",
+        85: "Snow Showers",
+        86: "Heavy Snow Showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm",
+        99: "Thunderstorm"
+    }
 
-    return "Unknown"
+    return conditions.get(code, "Clear")
 
 
 def get_weather_data(lat, lon):
@@ -53,24 +55,28 @@ def get_weather_data(lat, lon):
         "wind_direction": None,
         "wave_height": None,
         "wind_wave_height": None,
-        "rainfall": None,
+        "rainfall": 0,
         "weather_code": None,
-        "weather_condition": "Unknown"
+        "weather_condition": "Clear"
     }
 
-    # ==============================
-    # WEATHER
-    # ==============================
+    # ============================================================
+    # WEATHER - OPEN METEO
+    # ============================================================
 
     weather_params = {
         "latitude": lat,
         "longitude": lon,
-        "current": "wind_speed_10m,wind_direction_10m,precipitation,weather_code"
+        "current": (
+            "wind_speed_10m,"
+            "wind_direction_10m,"
+            "precipitation,"
+            "weather_code"
+        )
     }
 
     weather_success = False
 
-    # Primary: Open-Meteo
     try:
         response = requests.get(
             WEATHER_URL,
@@ -86,46 +92,52 @@ def get_weather_data(lat, lon):
         weather = response.json()
         current = weather.get("current", {})
 
-        wind_speed = current.get("wind_speed_10m")
-        wind_direction = current.get("wind_direction_10m")
-        rainfall = current.get("precipitation")
-        weather_code = current.get("weather_code")
+        result["wind_speed"] = current.get("wind_speed_10m")
+        result["wind_direction"] = current.get("wind_direction_10m")
+        result["rainfall"] = current.get("precipitation") or 0
+        result["weather_code"] = current.get("weather_code")
 
-        if (
-            wind_speed is not None
-            and wind_direction is not None
-            and rainfall is not None
-            and weather_code is not None
-        ):
-            result["wind_speed"] = wind_speed
-            result["wind_direction"] = wind_direction
-            result["rainfall"] = rainfall
-            result["weather_code"] = weather_code
+        # Convert weather code into readable condition
+        if result["weather_code"] is not None:
             result["weather_condition"] = weather_code_to_condition(
-                weather_code
+                result["weather_code"]
             )
 
-            weather_success = True
+        weather_success = True
 
-            print("OPEN-METEO WEATHER SUCCESS:", weather)
-
-        else:
-            print("OPEN-METEO WEATHER INCOMPLETE:", weather)
+        print(
+            "OPEN-METEO WEATHER SUCCESS:",
+            {
+                "wind_speed": result["wind_speed"],
+                "wind_direction": result["wind_direction"],
+                "rainfall": result["rainfall"],
+                "weather_code": result["weather_code"],
+                "weather_condition": result["weather_condition"]
+            }
+        )
 
     except Exception as e:
-        print("OPEN-METEO WEATHER FAILED:", str(e))
 
-    # ==============================
-    # FALLBACK: wttr.in
-    # ==============================
+        print(
+            "OPEN-METEO WEATHER FAILED:",
+            str(e)
+        )
+
+    # ============================================================
+    # FALLBACK - WTTR.IN
+    # ============================================================
 
     if not weather_success:
+
         try:
+
             fallback_url = f"https://wttr.in/{lat},{lon}"
 
             fallback_response = requests.get(
                 fallback_url,
-                params={"format": "j1"},
+                params={
+                    "format": "j1"
+                },
                 timeout=10,
                 headers={
                     "User-Agent": "Mozilla/5.0"
@@ -136,48 +148,96 @@ def get_weather_data(lat, lon):
 
             fallback_data = fallback_response.json()
 
-            current = fallback_data.get(
+            current_conditions = fallback_data.get(
                 "current_condition",
                 []
             )
 
-            if current:
-                current = current[0]
+            if current_conditions:
+
+                current = current_conditions[0]
 
                 result["wind_speed"] = float(
-                    current.get("windspeedKmph", 0)
+                    current.get(
+                        "windspeedKmph",
+                        0
+                    ) or 0
                 )
 
                 result["wind_direction"] = float(
-                    current.get("winddirDegree", 0)
+                    current.get(
+                        "winddirDegree",
+                        0
+                    ) or 0
                 )
 
                 result["rainfall"] = float(
-                    current.get("precipMM", 0)
+                    current.get(
+                        "precipMM",
+                        0
+                    ) or 0
                 )
 
-                result["weather_code"] = int(
-                    current.get("weatherCode", 0)
+                weather_code_value = current.get(
+                    "weatherCode",
+                    0
                 )
 
-                result["weather_condition"] = (
-                    current.get("weatherDesc", [{}])[0]
-                    .get("value", "Unknown")
+                try:
+                    result["weather_code"] = int(
+                        weather_code_value
+                    )
+                except Exception:
+                    result["weather_code"] = 0
+
+                weather_desc = (
+                    current.get(
+                        "weatherDesc",
+                        [{}]
+                    )[0]
+                    .get(
+                        "value",
+                        ""
+                    )
+                    .strip()
                 )
+
+                if weather_desc:
+                    result["weather_condition"] = weather_desc
+                else:
+                    result["weather_condition"] = (
+                        weather_code_to_condition(
+                            result["weather_code"]
+                        )
+                    )
+
+                # wttr.in code 353 = light rain showers
+                if result["weather_code"] == 353:
+                    result["weather_condition"] = (
+                        "Light Rain Showers"
+                    )
 
                 result["source"] = "wttr.in"
 
                 print(
                     "WTTR.IN WEATHER SUCCESS:",
-                    current
+                    {
+                        "wind_speed": result["wind_speed"],
+                        "wind_direction": result["wind_direction"],
+                        "rainfall": result["rainfall"],
+                        "weather_code": result["weather_code"],
+                        "weather_condition": result["weather_condition"]
+                    }
                 )
 
             else:
-                result["weather_error"] = (
-                    "wttr.in returned no current_condition data"
+
+                print(
+                    "WTTR.IN returned no current_condition data"
                 )
 
         except Exception as e:
+
             result["weather_error"] = (
                 f"Fallback: {type(e).__name__}: {str(e)}"
             )
@@ -187,9 +247,31 @@ def get_weather_data(lat, lon):
                 result["weather_error"]
             )
 
-    # ==============================
-    # MARINE
-    # ==============================
+    # ============================================================
+    # FINAL WEATHER CONDITION SAFETY
+    # ============================================================
+
+    condition = result.get("weather_condition")
+
+    if (
+        condition is None
+        or str(condition).strip() == ""
+        or str(condition).strip().lower() == "unknown"
+    ):
+
+        rainfall = result.get("rainfall") or 0
+        wind_speed = result.get("wind_speed") or 0
+
+        if rainfall > 0:
+            result["weather_condition"] = "Rain"
+        elif wind_speed >= 30:
+            result["weather_condition"] = "Windy"
+        else:
+            result["weather_condition"] = "Clear"
+
+    # ============================================================
+    # MARINE DATA
+    # ============================================================
 
     marine_params = {
         "latitude": lat,
@@ -198,6 +280,7 @@ def get_weather_data(lat, lon):
     }
 
     try:
+
         response = requests.get(
             MARINE_URL,
             params=marine_params,
@@ -211,16 +294,29 @@ def get_weather_data(lat, lon):
 
         marine = response.json()
 
-        print("OPEN-METEO MARINE RESPONSE:", marine)
-
-        current_marine = marine.get("current", {})
-
-        result["wave_height"] = current_marine.get(
-            "wave_height"
+        current_marine = marine.get(
+            "current",
+            {}
         )
 
-        result["wind_wave_height"] = current_marine.get(
-            "wind_wave_height"
+        result["wave_height"] = (
+            current_marine.get(
+                "wave_height"
+            )
+        )
+
+        result["wind_wave_height"] = (
+            current_marine.get(
+                "wind_wave_height"
+            )
+        )
+
+        print(
+            "OPEN-METEO MARINE RESPONSE:",
+            {
+                "wave_height": result["wave_height"],
+                "wind_wave_height": result["wind_wave_height"]
+            }
         )
 
     except Exception as e:
@@ -234,12 +330,29 @@ def get_weather_data(lat, lon):
             result["marine_error"]
         )
 
+    # ============================================================
+    # FINAL GUARANTEE
+    # ============================================================
+
+    if not result.get("weather_condition"):
+        result["weather_condition"] = "Clear"
+
+    if result["weather_condition"] == "Unknown":
+        result["weather_condition"] = "Clear"
+
     return result
 
 
+# ================================================================
+# LOCAL TEST
+# ================================================================
+
 if __name__ == "__main__":
 
-    result = get_weather_data(9.5, 76.0)
+    result = get_weather_data(
+        9.5,
+        76.0
+    )
 
     print("\nORCA WEATHER TEST")
     print("=================")

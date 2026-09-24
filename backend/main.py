@@ -1144,7 +1144,6 @@ def alerts(
                 str(exc)
         }
 
-
 # ============================================================
 # OCEAN LOCATION ANALYSIS
 # ============================================================
@@ -1158,69 +1157,155 @@ def ocean_location_analysis(
 ):
 
     from data.marine_data import (
-        get_marine_data
+        get_marine_data,
+        get_spatial_sst
     )
-
-
-    marine_data = get_marine_data(
-        lat,
-        lon,
-        date
-    )
-
 
     temperature = None
-
     chlorophyll = None
 
+    # ========================================================
+    # PRIMARY MARINE DATA
+    # ========================================================
+
+    try:
+
+        marine_data = get_marine_data(
+            lat,
+            lon,
+            date
+        )
+
+    except Exception as e:
+
+        print(
+            "MARINE DATA ERROR:",
+            str(e)
+        )
+
+        marine_data = {}
+
+    # ========================================================
+    # SST - PRIMARY NOAA
+    # ========================================================
 
     try:
 
         sst_rows = (
-
-            marine_data[
-                "sst"
-            ][
-                "data"
-            ][
-                "table"
-            ][
-                "rows"
-            ]
+            marine_data
+            .get("sst", {})
+            .get("data", {})
+            .get("table", {})
+            .get("rows", [])
         )
-
 
         if sst_rows:
 
             raw_temp = float(
                 sst_rows[0][-1]
             )
-            # NOAA MUR SST is in Kelvin — convert to Celsius
-            if raw_temp is not None and raw_temp > 200:
-                temperature = round(raw_temp - 273.15, 4)
+
+            if raw_temp > 200:
+
+                temperature = round(
+                    raw_temp - 273.15,
+                    4
+                )
+
             else:
+
                 temperature = raw_temp
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            "NOAA SST READ ERROR:",
+            str(e)
+        )
 
         temperature = None
 
+    # ========================================================
+    # SST - OPEN-METEO FALLBACK
+    # ========================================================
+
+    if temperature is None:
+
+        try:
+
+            print(
+                "NOAA SST unavailable. "
+                "Using Open-Meteo Marine SST fallback."
+            )
+
+            fallback_sst = get_spatial_sst(
+                lat - 0.2,
+                lat + 0.2,
+                lon - 0.2,
+                lon + 0.2,
+                date,
+                0.2
+            )
+
+            fallback_rows = (
+                fallback_sst
+                .get("table", {})
+                .get("rows", [])
+            )
+
+            temperatures = []
+
+            for row in fallback_rows:
+
+                if len(row) >= 4:
+
+                    value = float(
+                        row[-1]
+                    )
+
+                    if value > 200:
+
+                        value = (
+                            value - 273.15
+                        )
+
+                    temperatures.append(
+                        value
+                    )
+
+            if temperatures:
+
+                temperature = round(
+                    sum(temperatures)
+                    / len(temperatures),
+                    4
+                )
+
+                print(
+                    "OPEN-METEO SST SUCCESS:",
+                    temperature
+                )
+
+        except Exception as e:
+
+            print(
+                "OPEN-METEO SST FALLBACK FAILED:",
+                str(e)
+            )
+
+    # ========================================================
+    # CHLOROPHYLL
+    # ========================================================
 
     try:
 
         chl_rows = (
-
-            marine_data[
-                "chlorophyll"
-            ][
-                "data"
-            ][
-                "table"
-            ][
-                "rows"
-            ]
+            marine_data
+            .get("chlorophyll", {})
+            .get("data", {})
+            .get("table", {})
+            .get("rows", [])
         )
-
 
         if chl_rows:
 
@@ -1228,46 +1313,53 @@ def ocean_location_analysis(
                 chl_rows[0][-1]
             )
 
+    except Exception as e:
 
-    except Exception:
+        print(
+            "CHLOROPHYLL READ ERROR:",
+            str(e)
+        )
 
         chlorophyll = None
 
+    # ========================================================
+    # OCEAN ANALYSIS
+    # ========================================================
 
     ocean_result = analyze_ocean(
-
         temperature,
-
         chlorophyll,
-
         salinity
     )
 
+    # ========================================================
+    # RESPONSE
+    # ========================================================
 
     return {
 
-        "project":
-            "ORCA",
+        "project": "ORCA",
 
         "location": {
 
-            "latitude":
-                lat,
+            "latitude": lat,
+            "longitude": lon
 
-            "longitude":
-                lon
         },
 
-        "date":
-            date,
+        "date": date,
 
         "data_sources": {
 
-            "sst":
-                "NOAA CoastWatch MUR SST",
+            "sst": (
+                "Open-Meteo Marine SST"
+                if temperature is not None
+                else "NOAA CoastWatch MUR SST"
+            ),
 
             "chlorophyll":
                 "INCOIS Oceansat-2 OCM"
+
         },
 
         "observations": {
@@ -1280,6 +1372,7 @@ def ocean_location_analysis(
 
             "salinity":
                 salinity
+
         },
 
         "ocean_analysis":
@@ -1287,11 +1380,12 @@ def ocean_location_analysis(
 
         "historical_data_note":
             (
-                "The requested date determines whether "
-                "the observation is historical or recent. "
-                "ORCA does not automatically label historical "
-                "observations as current."
+                "The requested date determines "
+                "whether the observation is historical "
+                "or recent. ORCA does not automatically "
+                "label historical observations as current."
             )
+
     }
 
 
