@@ -268,7 +268,6 @@ def extract_rows(result):
     except Exception:
         return []
 
-
 # ============================================================
 # SPATIAL SST REQUEST
 # ============================================================
@@ -282,9 +281,12 @@ def get_spatial_sst(
     step=0.2
 ):
     """
-    Fetch an entire SST grid using ONE ERDDAP request.
+    Fetch spatial SST.
+    NOAA is tried first.
+    If NOAA is unavailable, Open-Meteo Marine is used as fallback.
     """
-    query = (
+
+    requested_query = (
         f"?analysed_sst"
         f"[({date}T00:00:00Z)]"
         f"[({min_lat}):{step}:({max_lat})]"
@@ -293,23 +295,124 @@ def get_spatial_sst(
 
     try:
         response = requests.get(
-            NOAA_SST_URL + query,
-            timeout=REQUEST_TIMEOUT
+            NOAA_SST_URL + requested_query,
+            timeout=8
         )
         response.raise_for_status()
 
-        return response.json()
+        data = response.json()
+
+        if data.get("table", {}).get("rows", []):
+            return data
 
     except Exception as e:
-        print("NOAA spatial SST error:", e)
+        print("NOAA spatial SST unavailable:", e)
+
+    # --------------------------------------------------------
+    # OPEN-METEO FALLBACK
+    # --------------------------------------------------------
+
+    rows = []
+
+    latitudes = []
+    longitudes = []
+
+    lat = min_lat
+    while lat <= max_lat + 0.0001:
+        latitudes.append(round(lat, 4))
+        lat += step
+
+    lon = min_lon
+    while lon <= max_lon + 0.0001:
+        longitudes.append(round(lon, 4))
+        lon += step
+
+    def fetch_point(lat, lon):
+        try:
+            response = requests.get(
+                "https://marine-api.open-meteo.com/v1/marine",
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current": "sea_surface_temperature"
+                },
+                timeout=8
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            temperature = (
+                data.get("current", {})
+                .get("sea_surface_temperature")
+            )
+
+            if temperature is not None:
+                return [
+                    data.get("current", {}).get("time"),
+                    lat,
+                    lon,
+                    temperature
+                ]
+
+        except Exception as e:
+            print(
+                f"Open-Meteo SST failed "
+                f"({lat},{lon}): {e}"
+            )
+
+        return None
+
+    points = [
+        (lat, lon)
+        for lat in latitudes
+        for lon in longitudes
+    ]
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = executor.map(
+            lambda p: fetch_point(p[0], p[1]),
+            points
+        )
+
+        for result in results:
+            if result is not None:
+                rows.append(result)
+
+    if rows:
+        print(
+            f"Using Open-Meteo Marine SST fallback: "
+            f"{len(rows)} points"
+        )
+
         return {
-            "error": str(e)
+            "table": {
+                "columnNames": [
+                    "time",
+                    "latitude",
+                    "longitude",
+                    "sea_surface_temperature"
+                ],
+                "rows": rows
+            },
+            "source": "Open-Meteo Marine"
         }
+
+    return {
+        "table": {
+            "rows": []
+        },
+        "error": "SST data unavailable from NOAA and Open-Meteo"
+    }
 
 
 # ============================================================
 # SPATIAL CHLOROPHYLL REQUEST
 # ============================================================
+
+
+
 
 def get_spatial_chlorophyll(
     min_lat,
